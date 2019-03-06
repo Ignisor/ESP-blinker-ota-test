@@ -1,0 +1,4 @@
+# idea files
+.idea/
+.env
+*/local_conf.py
