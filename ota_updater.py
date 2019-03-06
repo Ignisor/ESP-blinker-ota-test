@@ -1,7 +1,4 @@
-# 1000 x dank aan Evelien die mijn in deze tijden gesteund heeft
-# ohja, en er is ook nog tante suker (Jana Dej.) die graag kinderen wilt maar het zelf nog niet beseft
-
-import usocket
+import urequests
 import os
 import gc
 import machine
@@ -111,8 +108,11 @@ class OTAUpdater:
         return '0.0'
 
     def get_latest_version(self):
+        print('getting last version')
         latest_release = self.http_client.get(self.github_repo + '/releases/latest')
+        print('request sent')
         version = latest_release.json()['tag_name']
+        print('version: ', version)
         latest_release.close()
         return version
 
@@ -135,9 +135,15 @@ class OTAUpdater:
         with open(path, 'w') as outfile:
             try:
                 response = self.http_client.get(url)
-                outfile.write(response.text)
+
+                CHUNK_SIZE = 1024  # bytes
+                data = response.raw.recv(CHUNK_SIZE)
+                while data:
+                    outfile.write(data)
+                    data = response.raw.recv(CHUNK_SIZE)
+
             finally:
-                response.close()
+                response.raw.close()
                 outfile.close()
                 gc.collect()
 
@@ -178,98 +184,28 @@ class Response:
 
 
 class HttpClient:
-
-    def request(self, method, url, data=None, json=None, headers={}, stream=None):
-        try:
-            proto, dummy, host, path = url.split('/', 3)
-        except ValueError:
-            proto, dummy, host = url.split('/', 2)
-            path = ''
-        if proto == 'http:':
-            port = 80
-        elif proto == 'https:':
-            import ussl
-            port = 443
-        else:
-            raise ValueError('Unsupported protocol: ' + proto)
-
-        if ':' in host:
-            host, port = host.split(':', 1)
-            port = int(port)
-
-        ai = usocket.getaddrinfo(host, port, 0, usocket.SOCK_STREAM)
-        ai = ai[0]
-
-        s = usocket.socket(ai[0], ai[1], ai[2])
-        try:
-            s.connect(ai[-1])
-            if proto == 'https:':
-                s = ussl.wrap_socket(s, server_hostname=host)
-            s.write(b'%s /%s HTTP/1.0\r\n' % (method, path))
-            if not 'Host' in headers:
-                s.write(b'Host: %s\r\n' % host)
-            # Iterate over keys to avoid tuple alloc
-            for k in headers:
-                s.write(k)
-                s.write(b': ')
-                s.write(headers[k])
-                s.write(b'\r\n')
-            # add user agent
-            s.write('User-Agent')
-            s.write(b': ')
-            s.write('MicroPython OTAUpdater')
-            s.write(b'\r\n')
-            if json is not None:
-                assert data is None
-                import ujson
-                data = ujson.dumps(json)
-                s.write(b'Content-Type: application/json\r\n')
-            if data:
-                s.write(b'Content-Length: %d\r\n' % len(data))
-            s.write(b'\r\n')
-            if data:
-                s.write(data)
-
-            l = s.readline()
-            # print(l)
-            l = l.split(None, 2)
-            status = int(l[1])
-            reason = ''
-            if len(l) > 2:
-                reason = l[2].rstrip()
-            while True:
-                l = s.readline()
-                if not l or l == b'\r\n':
-                    break
-                # print(l)
-                if l.startswith(b'Transfer-Encoding:'):
-                    if b'chunked' in l:
-                        raise ValueError('Unsupported ' + l)
-                elif l.startswith(b'Location:') and not 200 <= status <= 299:
-                    raise NotImplementedError('Redirects not yet supported')
-        except OSError:
-            s.close()
-            raise
-
-        resp = Response(s)
-        resp.status_code = status
-        resp.reason = reason
-        return resp
-
     def head(self, url, **kw):
-        return self.request('HEAD', url, **kw)
+        pass
 
-    def get(self, url, **kw):
-        return self.request('GET', url, **kw)
+    def get(self, url, headers=None):
+        default_headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) '
+                          'AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/50.0.2661.102 Safari/537.36',
+        }
+        if headers:
+            default_headers.update(headers)
+
+        return urequests.get(url, headers=default_headers)
 
     def post(self, url, **kw):
-        return self.request('POST', url, **kw)
+        pass
 
     def put(self, url, **kw):
-        return self.request('PUT', url, **kw)
+        pass
 
     def patch(self, url, **kw):
-        return self.request('PATCH', url, **kw)
+        pass
 
     def delete(self, url, **kw):
-        return self.request('DELETE', url, **kw)
+        pass
