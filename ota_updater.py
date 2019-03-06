@@ -137,10 +137,11 @@ class OTAUpdater:
                 response = self.http_client.get(url)
 
                 CHUNK_SIZE = 1024  # bytes
-                data = response.raw.recv(CHUNK_SIZE)
+                data = response.raw.read(CHUNK_SIZE)
                 while data:
                     outfile.write(data)
-                    data = response.raw.recv(CHUNK_SIZE)
+                    data = response.raw.read(CHUNK_SIZE)
+                    gc.collect()
 
             finally:
                 response.raw.close()
